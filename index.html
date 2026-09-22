@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Tu Jardín 🌻</title>
+    <style>
+        body, html {
+            margin: 0; padding: 0;
+            width: 100vw; height: 100vh;
+            background: #050505;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            touch-action: none; /* Evita que la pantalla haga scroll al jugar */
+        }
+        
+        canvas { display: block; }
+        
+        /* Interfaz del juego */
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 235, 59, 0.1);
+            border: 1px solid rgba(255, 235, 59, 0.3);
+            padding: 10px 25px;
+            border-radius: 30px;
+            color: #ffeb3b;
+            font-size: 1.2rem;
+            font-weight: bold;
+            backdrop-filter: blur(5px);
+            pointer-events: none;
+            z-index: 10;
+            transition: opacity 0.5s;
+        }
+
+        /* Pantalla de victoria */
+        #mensaje-victoria {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) scale(0.8);
+            text-align: center;
+            color: #fff;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 40px;
+            border-radius: 20px;
+            border: 2px solid #ffeb3b;
+            box-shadow: 0 0 30px rgba(255, 235, 59, 0.4);
+            backdrop-filter: blur(10px);
+            opacity: 0;
+            pointer-events: none;
+            transition: all 1s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            z-index: 20;
+            width: 80%;
+            max-width: 400px;
+        }
+
+        #mensaje-victoria.visible {
+            opacity: 1;
+            transform: translate(-50%, -50%) scale(1);
+            pointer-events: auto;
+        }
+
+        h1 { color: #ffeb3b; margin-top: 0; text-shadow: 0 0 10px rgba(255, 235, 59, 0.8); }
+        p { font-size: 1.1rem; line-height: 1.5; }
+    </style>
+</head>
+<body>
+
+    <div id="ui">Flores plantadas: <span id="contador">0</span> / 21</div>
+    
+    <div id="mensaje-victoria">
+        <h1>¡Jardín Completo!</h1>
+        <p>Feliz 21 de Septiembre.</p>
+        <p>Quería darte algo distinto hoy. Las flores normales duran unos días, pero estas vivirán en el código para siempre. 💛</p>
+    </div>
+
+    <canvas id="juego"></canvas>
+
+    <script>
+        const canvas = document.getElementById('juego');
+        const ctx = canvas.getContext('2d');
+        const uiContador = document.getElementById('contador');
+        const uiElement = document.getElementById('ui');
+        const mensajeVictoria = document.getElementById('mensaje-victoria');
+        
+        let w, h;
+        const META_FLORES = 21;
+        let flores = [];
+        let particulas = [];
+        let juegoTerminado = false;
+
+        function redimensionar() {
+            w = canvas.width = window.innerWidth;
+            h = canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', redimensionar);
+        redimensionar();
+
+        // Clase para las flores interactivas
+        class Flor {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.escala = 0;
+                this.escalaMaxima = Math.random() * 0.4 + 0.6; // Tamaños variados
+                this.rotacion = Math.random() * Math.PI * 2;
+                this.creciendo = true;
+                this.numPetalos = Math.floor(Math.random() * 5) + 12; // Entre 12 y 16 pétalos
+            }
+
+            dibujar() {
+                if (this.creciendo) {
+                    this.escala += (this.escalaMaxima - this.escala) * 0.1;
+                    if (this.escalaMaxima - this.escala < 0.01) this.creciendo = false;
+                }
+
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotacion);
+                ctx.scale(this.escala, this.escala);
+
+                // Dibujar pétalos
+                for (let i = 0; i < this.numPetalos; i++) {
+                    ctx.rotate((Math.PI * 2) / this.numPetalos);
+                    ctx.beginPath();
+                    ctx.moveTo(0, 0);
+                    ctx.quadraticCurveTo(15, -30, 0, -60);
+                    ctx.quadraticCurveTo(-15, -30, 0, 0);
+                    
+                    let gradiente = ctx.createLinearGradient(0, 0, 0, -60);
+                    gradiente.addColorStop(0, '#f57f17');
+                    gradiente.addColorStop(1, '#fff176');
+                    
+                    ctx.fillStyle = gradiente;
+                    ctx.shadowColor = 'rgba(255, 235, 59, 0.3)';
+                    ctx.shadowBlur = 10;
+                    ctx.fill();
+                }
+
+                // Dibujar centro
+                ctx.beginPath();
+                ctx.arc(0, 0, 15, 0, Math.PI * 2);
+                ctx.fillStyle = '#4e342e';
+                ctx.fill();
+                
+                // Textura del centro (puntitos)
+                ctx.fillStyle = '#3e2723';
+                for(let i=0; i<15; i++) {
+                    let r = Math.random() * 12;
+                    let ang = Math.random() * Math.PI * 2;
+                    ctx.beginPath();
+                    ctx.arc(r * Math.cos(ang), r * Math.sin(ang), 1.5, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                ctx.restore();
+            }
+        }
+
+        // Clase para la explosión final de confeti dorado
+        class Particula {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.vx = (Math.random() - 0.5) * 15;
+                this.vy = (Math.random() - 0.5) * 15;
+                this.vida = 1;
+                this.decay = Math.random() * 0.01 + 0.005;
+                this.color = Math.random() > 0.5 ? '#ffeb3b' : '#ff9800';
+            }
+            dibujar() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vy += 0.2; // Gravedad
+                this.vida -= this.decay;
+
+                ctx.globalAlpha = Math.max(0, this.vida);
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 4, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.globalAlpha = 1;
+            }
+        }
+
+        // Sistema de interacción
+        function plantarFlor(x, y) {
+            if (juegoTerminado) return;
+
+            flores.push(new Flor(x, y));
+            uiContador.innerText = flores.length;
+
+            // Pequeño efecto de polvo al plantar
+            for(let i=0; i<5; i++) particulas.push(new Particula(x, y));
+
+            // Verificar condición de victoria
+            if (flores.length >= META_FLORES) {
+                juegoTerminado = true;
+                dispararVictoria();
+            }
+        }
+
+        function dispararVictoria() {
+            uiElement.style.opacity = '0'; // Oculta el contador
+            
+            // Explosión central
+            for(let i = 0; i < 200; i++) {
+                particulas.push(new Particula(w / 2, h / 2));
+            }
+
+            // Mostrar el mensaje con un ligero retraso
+            setTimeout(() => {
+                mensajeVictoria.classList.add('visible');
+            }, 800);
+        }
+
+        // Eventos de Touch y Click
+        window.addEventListener('mousedown', (e) => plantarFlor(e.clientX, e.clientY));
+        window.addEventListener('touchstart', (e) => {
+            e.preventDefault(); // Evita el doble click en móviles
+            plantarFlor(e.touches[0].clientX, e.touches[0].clientY);
+        }, { passive: false });
+
+        // Ciclo principal de renderizado
+        function animar() {
+            ctx.fillStyle = '#0a0a0a';
+            ctx.fillRect(0, 0, w, h);
+
+            // Fondo sutil estrellado/polen
+            ctx.fillStyle = 'rgba(255, 235, 59, 0.5)';
+            for(let i=0; i<30; i++) {
+                let px = (Math.sin(Date.now() * 0.001 + i) * w/2) + w/2;
+                let py = (Math.cos(Date.now() * 0.0015 + i*2) * h/2) + h/2;
+                ctx.beginPath();
+                ctx.arc(px, py, 1, 0, Math.PI*2);
+                ctx.fill();
+            }
+
+            // Dibujar entidades
+            flores.forEach(flor => flor.dibujar());
+            
+            // Actualizar y limpiar partículas muertas
+            particulas = particulas.filter(p => p.vida > 0);
+            particulas.forEach(p => p.dibujar());
+
+            requestAnimationFrame(animar);
+        }
+
+        animar();
+    </script>
+</body>
+</html>
